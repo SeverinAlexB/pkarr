@@ -5,24 +5,21 @@ use pkarr::dns::{Name, Packet, ResourceRecord};
 
 
 #[derive(Debug)]
-pub struct TempRR<'a> {
-    pub name: String,
-    pub data: pkarr::dns::rdata::RData<'a>,
-    entry: Entry
-}
-
-
-#[derive(Debug)]
 pub struct PkarrZone {
-    pub entries: Vec<Entry>
+    pub paket_bytes: Vec<u8>
 }
 
 impl PkarrZone {
     pub fn read(simplified_zone: String, pubkey: &str) -> Result<Self, anyhow::Error> {
         let entries = Self::parse_simplified_zone(simplified_zone, pubkey)?;
+        let packet = Self::entries_to_simple_dns_packet(entries)?;
         Ok(Self{
-            entries
+            paket_bytes: packet
         })
+    }
+
+    pub fn packet(&self) -> Packet {
+        Packet::parse(&self.paket_bytes).unwrap()
     }
 
     /**
@@ -67,9 +64,9 @@ $TTL 86400
         Ok(entries)
     }
 
-    pub fn to_simple_dns_packet<'a>(&self) -> Result<Vec<u8>, anyhow::Error> {
+    fn entries_to_simple_dns_packet(entries: Vec<Entry>) -> Result<Vec<u8>, anyhow::Error> {
         let mut packets = vec![];
-        for entry in self.entries.iter() {
+        for entry in entries.iter() {
             let entry = entry.clone();
             let packet = match entry {
                 Entry::Include { path, origin } => continue,
@@ -187,7 +184,7 @@ test    IN  A 127.0.0.1
 dns1	IN	A	10.0.1.1
 dns2	IN	A	10.0.1.2
 
-yolo    IN TXT  testsev
+yolo    IN  TXT  testsev
 ",
         )
     }
@@ -197,7 +194,7 @@ yolo    IN TXT  testsev
         let simplified_zone = simplified_zone();
         let zone = PkarrZone::read(simplified_zone, "123456");
         let zone = zone.unwrap();
-        assert_eq!(zone.entries.len(), 8);
+        assert_eq!(zone.packet().answers.len(), 9);
 
         println!("{zone:#?}");
     }
@@ -206,8 +203,7 @@ yolo    IN TXT  testsev
     fn test_transform() {
         let simplified_zone = simplified_zone();
         let zone = PkarrZone::read(simplified_zone, "123456").unwrap();
-        let packet_bytes = zone.to_simple_dns_packet().unwrap();
-        let packet = Packet::parse(&packet_bytes).unwrap();
+        let packet = zone.packet();
 
         println!("{:#?}", packet.answers);
     }
