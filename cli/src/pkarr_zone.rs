@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use domain::{base::Rtype, zonefile::inplace::{Entry, Zonefile}};
 use anyhow::anyhow;
-use pkarr::dns::{Name, ResourceRecord};
+use pkarr::dns::{Name, Packet, ResourceRecord};
 
 
 #[derive(Debug)]
@@ -67,16 +67,16 @@ $TTL 86400
         Ok(entries)
     }
 
-    pub fn entry_to_temprr<'a>(&self) -> Result<Vec<u8>, anyhow::Error> {
-        let mut packet = pkarr::dns::Packet::new_reply(0);
+    pub fn to_simple_dns_packet<'a>(&self) -> Result<Vec<u8>, anyhow::Error> {
+        let mut packets = vec![];
         for entry in self.entries.iter() {
             let entry = entry.clone();
-            match entry {
+            let packet = match entry {
                 Entry::Include { path, origin } => continue,
                 Entry::Record(val) => {
                     let (name, data) = val.clone().into_owner_and_data();
-                    let simple_name = name.to_string();
-                    let simple_name = Name::try_from(simple_name.as_str())?;
+                    let simple_name_str = name.to_string();
+                    let simple_name = Name::try_from(simple_name_str.as_str())?;
                     let simple_data = match data {
                         domain::rdata::ZoneRecordData::A(val) => {
                             let rdata: pkarr::dns::rdata::RData = pkarr::dns::rdata::RData::A(
@@ -85,7 +85,9 @@ $TTL 86400
                                 }
                             );
                             let rr = ResourceRecord::new(simple_name, pkarr::dns::CLASS::IN, 60*60, rdata);
+                            let mut packet = pkarr::dns::Packet::new_reply(0);
                             packet.answers.push(rr);
+                            packet.build_bytes_vec_compressed()?
                         },
                         domain::rdata::ZoneRecordData::Aaaa(val) => {
                             let rdata: pkarr::dns::rdata::RData = pkarr::dns::rdata::RData::AAAA(
@@ -94,7 +96,9 @@ $TTL 86400
                                 }
                             );
                             let rr = ResourceRecord::new(simple_name, pkarr::dns::CLASS::IN, 60*60, rdata);
+                            let mut packet = pkarr::dns::Packet::new_reply(0);
                             packet.answers.push(rr);
+                            packet.build_bytes_vec_compressed()?
                         },
                         domain::rdata::ZoneRecordData::Ns(val) => {
                             let ns_name = val.to_string();
@@ -103,53 +107,56 @@ $TTL 86400
                             );
                             
                             let rr = ResourceRecord::new(simple_name, pkarr::dns::CLASS::IN, 60*60, rdata);
+                            let mut packet = pkarr::dns::Packet::new_reply(0);
                             packet.answers.push(rr);
+                            packet.build_bytes_vec_compressed()?
+                        },
+
+                        domain::rdata::ZoneRecordData::Txt(val) => {
+                            let value = val.to_string();
+                            let mut txt = pkarr::dns::rdata::TXT::new();
+                            txt.add_string(value.as_str())?;
+                            let rdata: pkarr::dns::rdata::RData = pkarr::dns::rdata::RData::TXT(
+                                txt
+                            );
+                            
+                            let rr = ResourceRecord::new(simple_name, pkarr::dns::CLASS::IN, 60*60, rdata);
+                            let mut packet = pkarr::dns::Packet::new_reply(0);
+                            packet.answers.push(rr);
+                            packet.build_bytes_vec_compressed()?
+                        },
+                        domain::rdata::ZoneRecordData::Mx(val) => {
+                            let exchange = val.exchange().to_string();
+                            let mut mx = pkarr::dns::rdata::MX{
+                                preference: val.preference(),
+                                exchange: Name::try_from(exchange.as_str())?,
+                            };
+      
+                            let rdata: pkarr::dns::rdata::RData = pkarr::dns::rdata::RData::MX(
+                                mx
+                            );
+                            
+                            let rr = ResourceRecord::new(simple_name, pkarr::dns::CLASS::IN, 60*60, rdata);
+                            let mut packet = pkarr::dns::Packet::new_reply(0);
+                            packet.answers.push(rr);
+                            packet.build_bytes_vec_compressed()?
                         },
                         _ => return Err(anyhow!("Not support record type."))
                     };
                     simple_data
                 }
             };
+            packets.push(packet);
+            
         };
-        Ok(packet.build_bytes_vec_compressed()?)
-        //     match entry {
-        //         Entry::Record(val) => {
-        //             let (name, data) = val.clone().into_owner_and_data();
-        //             let simple_data = match data {
-        //                 domain::rdata::ZoneRecordData::A(val) => {
-        //                     let rdata: pkarr::dns::rdata::RData = pkarr::dns::rdata::RData::A(
-        //                         pkarr::dns::rdata::A{
-        //                             address: val.addr().into()
-        //                         }
-        //                     );
-        //                 
-        //                     Ok(TempRR { name: name.to_string(), data: rdata, entry: entry.clone() })
-        //                 },
-        //                 domain::rdata::ZoneRecordData::Aaaa(val) => {
-        //                     let rdata: pkarr::dns::rdata::RData = pkarr::dns::rdata::RData::AAAA(
-        //                         pkarr::dns::rdata::AAAA{
-        //                             address: val.addr().into()
-        //                         }
-        //                     );
-        //                    
-        //                     Ok(TempRR { name: name.to_string(), data: rdata, entry: entry.clone() })
-        //                 },
-        //                 domain::rdata::ZoneRecordData::Ns(val) => {
-        //                     let ns_name = val.to_string();
-        //                     let rdata: pkarr::dns::rdata::RData = pkarr::dns::rdata::RData::NS(
-        //                         pkarr::dns::rdata::NS(Name::try_from(ns_name.as_str())?)
-        //                     );
-        //                    
-        //                     Ok(TempRR { name: name.to_string(), data: rdata, entry: entry.clone() })
-        //                 },
-        //                 _ => return Err(anyhow!("Not support record type."))
-        //             };
-        //             simple_data
-        //         },
-        //         _ => Err(anyhow!("Include record not supported."))
-        //     }
-        // };
-
+        let mut final_packet = Packet::new_reply(0);
+        for packet in packets.iter() {
+            let parsed = Packet::parse(packet)?;
+            for answer in parsed.answers {
+                final_packet.answers.push(answer)
+            }
+        }
+        Ok(final_packet.build_bytes_vec_compressed()?)
     }
 }
 
@@ -179,6 +186,8 @@ test    IN  A 127.0.0.1
 	
 dns1	IN	A	10.0.1.1
 dns2	IN	A	10.0.1.2
+
+yolo    IN TXT  testsev
 ",
         )
     }
@@ -197,9 +206,9 @@ dns2	IN	A	10.0.1.2
     fn test_transform() {
         let simplified_zone = simplified_zone();
         let zone = PkarrZone::read(simplified_zone, "123456").unwrap();
-        let ns_entry = zone.entries[5].clone();
-        let temprr = zone.entry_to_temprr(&ns_entry).unwrap();
+        let packet_bytes = zone.to_simple_dns_packet().unwrap();
+        let packet = Packet::parse(&packet_bytes).unwrap();
 
-        println!("{temprr:#?}")
+        println!("{:#?}", packet.answers);
     }
 }
