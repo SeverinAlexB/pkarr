@@ -622,3 +622,41 @@ async fn publish_resolve_most_recent_with_no_cache(#[case] networks: Networks) {
     let resolved = b.resolve_most_recent(&keypair.public_key()).await.unwrap();
     assert_eq!(resolved.as_bytes(), signed_packet.as_bytes());
 }
+
+#[rstest]
+#[case::dht(Networks::Dht)]
+#[case::both_networks(Networks::Both)]
+#[cfg_attr(feature = "relays", case::relays(Networks::Relays))]
+#[tokio::test]
+async fn republish_cas_test(#[case] networks: Networks) {
+    use simple_dns::Name;
+
+    use crate::SignedPacketBuilder;
+
+    let testnet = mainline::Testnet::new(10).unwrap();
+    let relay = Relay::run_test(&testnet).await.unwrap();
+
+    let client = builder(&relay, &testnet, networks).build().unwrap();
+    for i in 0..30 {
+        let key = Keypair::random();
+        let packet = SignedPacketBuilder::default()
+            .cname(Name::new("test").unwrap(), Name::new("test2").unwrap(), 600)
+            .build(&key)
+            .unwrap();
+        // let _ = client.publish(&packet, None).await;
+        let _ = client.publish(&packet, Some(packet.timestamp())).await;
+        let most_recent = client
+            .resolve_most_recent(&key.public_key())
+            .await
+            .expect("valid packet");
+        let res = client
+            .publish(&most_recent, Some(most_recent.timestamp()))
+            .await;
+        if let Err(e) = res {
+            println!("{i} Failed to publish packet. {e}");
+            assert!(false)
+        } else {
+            println!("{i} Ok")
+        }
+    }
+}
