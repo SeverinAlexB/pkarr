@@ -1304,6 +1304,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "mainline"
+version = "5.4.0"
+source = "git+https://github.com/severinalexb/mainline?branch=gcp-debug#df667e4f181f6c083182ddc8888fea8df16d76af"
+dependencies = [
+ "crc",
+ "document-features",
+ "dyn-clone",
+ "ed25519-dalek",
+ "flume",
+ "futures-lite",
+ "getrandom 0.2.16",
+ "lru",
+ "serde",
+ "serde_bencode",
+ "serde_bytes",
+ "sha1_smol",
+ "thiserror 2.0.12",
+ "tracing",
+]
+
+[[package]]
 name = "matchers"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1573,7 +1594,7 @@ dependencies = [
  "heed",
  "log",
  "lru",
- "mainline",
+ "mainline 5.4.0 (git+https://github.com/severinalexb/mainline?branch=gcp-debug)",
  "ntimestamp",
  "page_size",
  "pkarr-relay",
@@ -1616,7 +1637,7 @@ dependencies = [
  "heed",
  "log",
  "lru",
- "mainline",
+ "mainline 5.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ntimestamp",
  "page_size",
  "self_cell",
