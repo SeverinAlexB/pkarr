@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
-    path::{Path, PathBuf},
+    path::{Path, PathBuf}, time::Duration,
 };
 
 pub const DEFAULT_CACHE_SIZE: usize = 1_000_000;
@@ -99,6 +99,7 @@ impl Config {
             if let Some(ttl) = cache_config.maximum_ttl {
                 config.pkarr.maximum_ttl(ttl);
             }
+            config.pkarr.request_timeout(Duration::from_secs(5));
 
             if let Some(cache_path) = cache_config.path.as_ref() {
                 config.cache_path = Some(if cache_path.is_relative() {
